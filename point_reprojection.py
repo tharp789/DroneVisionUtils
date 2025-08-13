@@ -320,22 +320,25 @@ class PointReprojection:
         self.calibration_matrix = np.dot(scale_matrix, self.original_calibration_matrix)
 
     def lat_lon_distances_meters(self, lat1, lon1, lat2, lon2):
-        """
-        lat, longs are in degrees
-        Returns:
-        - lat_distance_m (y): north-south distance in meters (difference in latitude)
-        - lon_distance_m (x): east-west distance in meters (difference in longitude)
-        """
+
+        # Reference: https://www.movable-type.co.uk/scripts/latlong.html
+        # Using Haversine formula
         phi1 = np.radians(lat1)
         phi2 = np.radians(lat2)
         dphi = np.radians(lat2 - lat1)
         dlambda = np.radians(lon2 - lon1)
 
-        # North-south distance (latitude)
-        lat_distance_m = R * dphi
+        a = np.sin(dphi / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda / 2) ** 2
+        c = 2 * np.atan2(np.sqrt(a), np.sqrt(1 - a))
+        d = R * c
 
-        # East-west distance (longitude, adjusted for latitude)
-        lon_distance_m = R * dlambda * np.cos((phi1 + phi2) / 2)
+        y = np.sin(dlambda) * np.cos(phi2)
+        x = np.cos(phi1) * np.sin(phi2) - np.sin(phi1) * np.cos(phi2) * np.cos(dlambda)
+
+        theta = np.atan2(y, x)
+
+        lat_distance_m = d * np.cos(theta)  # North-South distance
+        lon_distance_m = d * np.sin(theta)  # East-West distance
 
         return lat_distance_m, lon_distance_m
 
