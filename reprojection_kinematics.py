@@ -1,7 +1,5 @@
 import numpy as np
 import cv2
-import os
-import sys
 
 R = 6371000  # Earth radius in meters
 
@@ -10,14 +8,6 @@ CAMERA_HORIZONTAL_OFFSET = 0.010 #meters
 
 DRONE_TO_BASE_FORWARD_OFFSET = 0.00 #meters
 DRONE_TO_BASE_HEIGHT_OFFSET = 0.032 #meters
-
-current = os.path.dirname(os.path.realpath(__file__))
-parent_directory = os.path.dirname(current)
-sys.path.append(parent_directory)
-sys.path.append(current)
-sys.path.append(os.path.join(parent_directory, 'vision'))
-
-from elevation_map import ElevationMap
 
 # Frame Conventions -------------------------
 # Camera Frame convention is x right, y down, z forward
@@ -85,7 +75,6 @@ class PointReprojection:
         numpy.ndarray: The transform from the base to the camera (4,4)
         '''
 
-        # Get the rotation matrix for the gimbal
         cam_to_base_transform = np.eye(4)
         # yaw rotation is around the y axis
         yaw_rot = np.array([[np.cos(yaw), 0, -np.sin(yaw)], 
@@ -120,6 +109,7 @@ class PointReprojection:
         '''
         Get the relative world location of the drone in the world frame
         '''
+        # convert heading from clockwise from north to counterclockwise from east
         heading_rad = np.radians(360 - heading)
 
         #TODO: check if the sign of the displacement is correct
@@ -148,7 +138,6 @@ class PointReprojection:
         Returns:
         tuple: The pixel location of the object in the image (u, v)
         '''
-        
         # get the location in the world frame
         rel_alt = drone_altitude - home_altitude
         if rel_alt < 0:
@@ -171,8 +160,69 @@ class PointReprojection:
         center_v = self.original_image_height / 2
         pixel_u, pixel_v = self.get_zoomed_pixel_from_original_pixel(pixel_u, pixel_v, zoom_level, center_u, center_v)
 
-        return pixel_u, pixel_v
+        if pixel_u < 0 or pixel_u >= self.original_image_width or pixel_v < 0 or pixel_v >= self.original_image_height:
+            pixel_inbounds = False
+            if location_camera[2] < 0:
+                # If the point is behind the camera, we want to show an out of bounds marker
+                behind_camera = True
+            else:
+                behind_camera = False
+            pixel, direction = self.get_oob_marker_vector(pixel_u, pixel_v, zoom_level, center_u, center_v, behind_camera)
+        else:
+            pixel_inbounds = True
+            direction = (0, 0, 0)
+            pixel = (pixel_u, pixel_v)
+
+        return pixel, direction, pixel_inbounds
     
+    def get_oob_marker_vector(self, pixel_u, pixel_v, zoom_level, center_u, center_v, behind_camera=False):
+        '''
+        Get the out of bounds marker vector for a pixel that is out of bounds
+        
+        Parameters:
+        pixel_u (int): The x pixel location of the object in the zoomed image
+        pixel_v (int): The y pixel location of the object in the zoomed image
+        zoom_level (int): The zoom level of the image
+        
+        Returns:
+        tuple: The pixel location of the object in the zoomed image (u, v)
+        float: The direction of the out of bounds marker vector (theta)
+        '''
+        
+        # Calculate the direction of the out of bounds marker vector
+        if behind_camera:
+            u = center_u - (pixel_u - center_u)
+            v = center_v - (pixel_v - center_v)
+
+        # Ray from center to (u,v)
+        dx = u - center_u
+        dy = v - center_v
+
+        if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+            # if direction is zero, return the center pixel
+            return (center_u, 0), -np.pi / 2
+        
+        # find the intersecting point on the edge of the image
+        if abs(dx) > abs(dy):
+            # horizontal edge
+            if dx > 0:
+                u = self.original_image_width - 1
+            else:
+                u = 0
+            v = center_v + dy * (u - center_u) / dx
+        else:
+            # vertical edge
+            if dy > 0:
+                v = self.original_image_height - 1
+            else:
+                v = 0
+            u = center_u + dx * (v - center_v) / dy
+            
+        theta = np.arctan2(v - center_v, u - center_u)
+        
+        return (int(u), int(v)), theta
+
+
     def location_base_to_location_camera(self, location_base, gimbal_pitch, gimbal_yaw):
         '''
         Get the location of the point in the camera frame from the base frame
@@ -341,16 +391,3 @@ class PointReprojection:
         lon_distance_m = d * np.sin(theta)  # East-West distance
 
         return lat_distance_m, lon_distance_m
-
-
-
-        
-
-
-
-
-
-
-
-
-
