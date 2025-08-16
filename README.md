@@ -1,3 +1,3 @@
 # DroneVisionUtils
 
-Helper functions for doing mapping, augmented reality, and positioning on field robotics platforms
+Helper functions for mapping, augmented reality, and state estimation on field robotics platforms
